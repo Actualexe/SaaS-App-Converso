@@ -1,23 +1,28 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { subjectsColors, voices } from "@/constants";
-// import { CreateAssistantDTO } from "@vapi-ai/web/dist/api";
+import type { CreateAssistantDTO } from "@vapi-ai/web/dist/api";
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export const getSubjectColor = (subject: string) => {
-  return subjectsColors[subject as keyof typeof subjectsColors];
+  return subjectsColors[subject as keyof typeof subjectsColors] ?? "#E5E5E5";
 };
 
-export const configureAssistant = (voice: string, style: string) => {
+// Vapi accepts 10s–12h; older rows may predate the form's duration limits.
+const MAX_CALL_SECONDS = 43200;
+
+export const configureAssistant = (voice: string, style: string, durationMinutes: number) => {
   const voiceId =
-    voices[voice as keyof typeof voices][
+    voices[voice as keyof typeof voices]?.[
       style as keyof (typeof voices)[keyof typeof voices]
     ] || "sarah";
 
   const vapiAssistant: CreateAssistantDTO = {
     name: "Companion",
+    // End the call at the companion's configured length so sessions can't run up usage.
+    maxDurationSeconds: Math.min(Math.max(Math.round(durationMinutes * 60), 60), MAX_CALL_SECONDS),
     firstMessage:
       "Hello, let's start the session. Today we'll be talking about {{topic}}.",
     transcriber: {
@@ -54,8 +59,6 @@ export const configureAssistant = (voice: string, style: string) => {
         },
       ],
     },
-    clientMessages: [],
-    serverMessages: [],
   };
   return vapiAssistant;
 };

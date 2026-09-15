@@ -4,7 +4,6 @@ import { getSubjectColor } from '@/lib/utils';
 import { currentUser } from '@clerk/nextjs/server';
 import Image from 'next/image';
 import { redirect } from 'next/navigation';
-import React from 'react'
 
 interface CompanionSessionPageProps {
     params: Promise<{ id: string }>;
@@ -12,15 +11,16 @@ interface CompanionSessionPageProps {
 
 const page = async ({ params }: CompanionSessionPageProps) => {
     const { id } = await params;
-    const companion = await getCompanion(id);
     const user = await currentUser();
 
-    const { name, subject, title, topic, duration } = companion;
-
     if(!user) redirect('/sign-in');
-    if(!name) redirect('/companions');
 
-    
+    const companion = await getCompanion(id);
+
+    if(!companion?.name) redirect('/companions');
+
+    const { name, subject, topic, duration } = companion;
+
     return (
         <main>
             <section className="flex rounded-border justify-between p-6 max-md:flex-col">
@@ -47,8 +47,8 @@ const page = async ({ params }: CompanionSessionPageProps) => {
             <CompanionComponent
                 {...companion}
                 companionId={id}
-                userName={user.firstName!}
-                userImage={user.imageUrl!}
+                userName={user.firstName ?? 'You'}
+                userImage={user.imageUrl}
             />
         </main>
     )

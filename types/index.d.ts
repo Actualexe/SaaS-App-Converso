@@ -1,39 +1,27 @@
-// type User = {
-//   name: string;
-//   email: string;
-//   image?: string;
-//   accountId: string;
-// };
+type Subject =
+  | "maths"
+  | "language"
+  | "science"
+  | "history"
+  | "coding"
+  | "economics";
 
-enum Subject {
-  maths = "maths",
-  language = "language",
-  science = "science",
-  history = "history",
-  coding = "coding",
-  geography = "geography",
-  economics = "economics",
-  finance = "finance",
-  business = "business",
-}
-
-type Companion = Models.DocumentList<Models.Document> & {
-  $id: string;
-  name: string;
-  subject: Subject;
-  topic: string;
-  duration: number;
-  bookmarked: boolean;
-};
-
-interface CreateCompanion {
+type Companion = {
+  id: string;
+  author: string;
   name: string;
   subject: string;
   topic: string;
+  duration: number;
   voice: string;
   style: string;
-  duration: number;
-}
+  created_at?: string;
+  bookmarked?: boolean;
+};
+
+type CreateCompanionResult =
+  | { ok: true; companion: Companion }
+  | { ok: false; error: string };
 
 interface GetAllCompanions {
   limit?: number;
@@ -80,4 +68,5 @@ interface CompanionComponentProps {
   userImage: string;
   voice: string;
   style: string;
+  duration: number;
 }

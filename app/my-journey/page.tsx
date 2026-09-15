@@ -1,5 +1,4 @@
-import { getUserCompanions, getUserSessions } from '@/lib/actions/companion.actions';
-import { auth } from '@clerk/nextjs'
+import { getUserCompanions, getUserSessionCount, getUserSessions } from '@/lib/actions/companion.actions';
 import { currentUser } from '@clerk/nextjs/server';
 import Image from 'next/image';
 import { redirect } from 'next/navigation';
@@ -16,8 +15,11 @@ const page = async () => {
 
     if (!user) redirect('/sign-in');
 
-    const companions = await getUserCompanions(user.id);
-    const sessionHistory = await getUserSessions(user.id);
+    const [companions, sessionHistory, lessonsCompleted] = await Promise.all([
+        getUserCompanions(user.id),
+        getUserSessions(user.id),
+        getUserSessionCount(user.id),
+    ]);
 
     return (
         <main className="min-lg:w-3/4">
@@ -39,7 +41,7 @@ const page = async () => {
                     </div>
                 </div>
                 <div className="flex gap-4">
-                    <div className="border border-black rouded-lg p-3 gap-2 flex flex-col h-fit">
+                    <div className="border border-black rounded-lg p-3 gap-2 flex flex-col h-fit">
                         <div className="flex gap-2 items-center">
                             <Image
                                 src="/icons/check.svg"
@@ -47,11 +49,11 @@ const page = async () => {
                                 width={22}
                                 height={22}
                             />
-                            <p className="text-2xl font-bold">{sessionHistory.length}</p>
+                            <p className="text-2xl font-bold">{lessonsCompleted}</p>
                         </div>
                         <div>Lessons completed</div>
                     </div>
-                    <div className="border border-black rouded-lg p-3 gap-2 flex flex-col h-fit">
+                    <div className="border border-black rounded-lg p-3 gap-2 flex flex-col h-fit">
                         <div className="flex gap-2 items-center">
                             <Image src="/icons/cap.svg" alt="cap" width={22} height={22} />
                             <p className="text-2xl font-bold">{companions.length}</p>
@@ -60,7 +62,7 @@ const page = async () => {
                     </div>
                 </div>
             </section>
-            <Accordion type="multiple">
+            <Accordion multiple>
                 <AccordionItem value="recent">
                     <AccordionTrigger className="text-2xl font-bold">
                         Recent Sessions

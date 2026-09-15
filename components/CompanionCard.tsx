@@ -1,4 +1,3 @@
-import { Button } from "@base-ui/react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -29,10 +28,8 @@ const CompanionCard = ({ id, name, topic, subject, duration, color }: CompanionC
             <p>{duration} mins duration</p>
         </div>
 
-        <Link href={`/companions/${id}`} className="w-full">
-            <button className="btn-primary w-full justify-center">
-                Launch Lesson
-            </button>
+        <Link href={`/companions/${id}`} className="btn-primary w-full justify-center">
+            Launch Lesson
         </Link>
     </article>
   )

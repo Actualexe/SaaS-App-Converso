@@ -1,9 +1,7 @@
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
-  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -21,7 +19,11 @@ interface CompanionListProps {
 const CompanionList = ({ title, companions, classNames }: CompanionListProps) => {
   return (
     <article className={cn("companion-list", classNames)}>
-        <h2 className="font-bold text-3xl">Recently completed lessons</h2>
+        <h2 className="font-bold text-3xl">{title}</h2>
+
+        {companions?.length === 0 && (
+            <p className="pt-4 text-lg">Nothing here yet.</p>
+        )}
 
         <Table>
             <TableHeader>
@@ -35,7 +37,7 @@ const CompanionList = ({ title, companions, classNames }: CompanionListProps) =>
                 {companions?.map(({ id, subject, name, topic, duration }) => (
                     <TableRow key={id}>
                         <TableCell>
-                            <Link href="/">
+                            <Link href={`/companions/${id}`}>
                             <div className="flex items-center gap-2">
                                 <div className="size-[72px] flex items-center justify-center rounded-lg max-md:hidden"
                                 style={{backgroundColor: getSubjectColor(subject)}}>

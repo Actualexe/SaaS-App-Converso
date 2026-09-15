@@ -8,46 +8,46 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { subjects } from "@/constants"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { removeKeysFromUrlQuery, formUrlQuery } from "@jsmastery/utils"
 
 const SubjectFilter = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const query = searchParams.get("subject") || "";
-    const [subject, setSubject] = useState(query);
+    // The URL is the source of truth, so Back/Forward stay in sync and never
+    // trigger a re-push of a stale selection.
+    const subject = searchParams.get("subject") || "all";
 
-    useEffect(() => {
-            let newUrl = "";
-            if(subject === "all"){
-                newUrl = removeKeysFromUrlQuery({
-                    params: searchParams.toString(),
-                    keysToRemove: ["subject"],
-                });
-            }else{
-                newUrl = formUrlQuery({
+    const handleChange = (value: unknown) => {
+        const next = !value || value === "all" ? "" : (value as string);
+        if (next === (searchParams.get("subject") || "")) return;
+
+        router.push(next
+            ? formUrlQuery({
                 params: searchParams.toString(),
                 key: "subject",
-                value: subject,
-                });
-            }
-            router.push(newUrl);
-    }, [subject]);
-    
+                value: next,
+              })
+            : removeKeysFromUrlQuery({
+                params: searchParams.toString(),
+                keysToRemove: ["subject"],
+              })
+        );
+    };
+
     return (
         <div>
-            <Select onValueChange={(value) => setSubject(value ?? "")} value={subject}>
+            <Select onValueChange={handleChange} value={subject}>
                 <SelectTrigger className="input capitalize">
                     <SelectValue placeholder="Select subject" />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectGroup>
                     <SelectItem value="all">
-                        All Subjects    
-                    </SelectItem>    
+                        All Subjects
+                    </SelectItem>
                     {subjects.map((item) => (
-                        <SelectItem key={item} value={item}>
+                        <SelectItem key={item} value={item} className="capitalize">
                         {item}
                         </SelectItem>
                     ))}
