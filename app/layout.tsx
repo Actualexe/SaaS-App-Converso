@@ -14,7 +14,10 @@ const bricolage = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
-  title: "Converso",
+  title: {
+    default: "Converso",
+    template: "%s | Converso",
+  },
   description: "Real-time AI Teaching Platform",
 };
 
@@ -26,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className={`${bricolage.variable} antialiased`}>
-        <ClerkProvider appearance={{ variables: {colorPrimary: '#FE5933' } }}>
+        <ClerkProvider appearance={{ theme: shadcn, variables: { colorPrimary: '#FE5933' } }}>
           <Navbar />
           {children}
         </ClerkProvider>

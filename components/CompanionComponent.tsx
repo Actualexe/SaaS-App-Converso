@@ -1,13 +1,41 @@
 'use client';
 
-import {useEffect, useRef, useState} from 'react'
+import {useCallback, useEffect, useRef, useState} from 'react'
 import {cn, configureAssistant, getSubjectColor} from "@/lib/utils";
 import {vapi} from "@/lib/vapi.sdk";
 import Image from "next/image";
-import {LottieHandle} from "lottie-react";
-import { Lottie } from 'lottie-react';
+import { Lottie, type LottieHandle } from 'lottie-react';
 import soundwaves from '@/constants/soundwaves.json'
 import {addToSessionHistory} from "@/lib/actions/companion.actions";
+import type { AssistantOverrides } from '@vapi-ai/web/dist/api';
+
+// Vapi reports errors as { type, error, timestamp } rather than an Error, and
+// the console renders that as "{}". Pull out something readable instead.
+const describeVapiError = (error: unknown): string => {
+    if (!error) return 'Unknown error';
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
+
+    if (typeof error === 'object') {
+        const payload = error as { type?: string; error?: { message?: string; errorMsg?: string } | string };
+        const inner = typeof payload.error === 'string'
+            ? payload.error
+            : payload.error?.errorMsg ?? payload.error?.message;
+
+        if (payload.type || inner) return [payload.type, inner].filter(Boolean).join(': ');
+    }
+
+    try {
+        return JSON.stringify(error);
+    } catch {
+        return String(error);
+    }
+}
+
+// When the far end hangs up, the ejection error can arrive before `call-end`,
+// so the payload itself has to be recognised as teardown too.
+const isTeardownError = (description: string) =>
+    /eject|meeting has ended|meeting ended|left the meeting/i.test(description);
 
 enum CallStatus {
     INACTIVE = 'INACTIVE',
@@ -23,23 +51,28 @@ const CompanionComponent = ({ companionId, subject, topic, name, userName, userI
     const [messages, setMessages] = useState<SavedMessage[]>([]);
 
     const lottieRef = useRef<LottieHandle>(null);
+    // Ending a call ejects us from the Daily room, which surfaces as an `error`
+    // event. That is teardown noise, not a failure, so track when we expect it.
+    const endingRef = useRef(false);
 
     useEffect(() => {
-        if(lottieRef) {
-            if(isSpeaking) {
-                lottieRef.current?.play()
-            } else {
-                lottieRef.current?.stop()
-            }
+        if(isSpeaking) {
+            lottieRef.current?.play()
+        } else {
+            lottieRef.current?.stop()
         }
-    }, [isSpeaking, lottieRef])
+    }, [isSpeaking])
 
     useEffect(() => {
         const onCallStart = () => setCallStatus(CallStatus.ACTIVE);
 
         const onCallEnd = () => {
+            endingRef.current = true;
             setCallStatus(CallStatus.FINISHED);
-            addToSessionHistory(companionId)
+            setIsSpeaking(false);
+            addToSessionHistory(companionId).catch((error) =>
+                console.error('Failed to save session history', error)
+            );
         }
 
         const onMessage = (message: Message) => {
@@ -52,7 +85,21 @@ const CompanionComponent = ({ companionId, subject, topic, name, userName, userI
         const onSpeechStart = () => setIsSpeaking(true);
         const onSpeechEnd = () => setIsSpeaking(false);
 
-        const onError = (error: Error) => console.log('Error', error);
+        const onError = (error: unknown) => {
+            setIsSpeaking(false);
+
+            const description = describeVapiError(error);
+
+            // Expected when a session ends: the room ejects us on the way out.
+            if (endingRef.current || isTeardownError(description)) {
+                endingRef.current = true;
+                console.debug('Vapi teardown notice:', description);
+                return;
+            }
+
+            console.error('Vapi error:', description);
+            setCallStatus(CallStatus.INACTIVE);
+        };
 
         vapi.on('call-start', onCallStart);
         vapi.on('call-end', onCallEnd);
@@ -69,28 +116,40 @@ const CompanionComponent = ({ companionId, subject, topic, name, userName, userI
             vapi.off('speech-start', onSpeechStart);
             vapi.off('speech-end', onSpeechEnd);
         }
-    }, []);
+    }, [companionId]);
+
+    // Leaving the page mid-call would otherwise leave the microphone open.
+    useEffect(() => () => { vapi.stop() }, []);
 
     const toggleMicrophone = () => {
-        const isMuted = vapi.isMuted();
-        vapi.setMuted(!isMuted);
-        setIsMuted(!isMuted)
+        const muted = vapi.isMuted();
+        vapi.setMuted(!muted);
+        setIsMuted(!muted)
     }
 
-    const handleCall = async () => {
+    const handleCall = useCallback(async () => {
+        endingRef.current = false;
         setCallStatus(CallStatus.CONNECTING)
+        setMessages([])
 
         const assistantOverrides = {
             variableValues: { subject, topic, style },
-            clientMessages: ["transcript"],
-            serverMessages: [],
-        }
+            // The SDK's generated types declare these as a single literal,
+            // but the API takes an array of message types.
+            clientMessages: ["transcript"] as unknown as AssistantOverrides["clientMessages"],
+            serverMessages: [] as unknown as AssistantOverrides["serverMessages"],
+        } satisfies AssistantOverrides
 
-        // @ts-expect-error
-        vapi.start(configureAssistant(voice, style), assistantOverrides)
-    }
+        try {
+            await vapi.start(configureAssistant(voice, style), assistantOverrides)
+        } catch (error) {
+            console.error('Failed to start the session', error);
+            setCallStatus(CallStatus.INACTIVE);
+        }
+    }, [subject, topic, style, voice])
 
     const handleDisconnect = () => {
+        endingRef.current = true;
         setCallStatus(CallStatus.FINISHED)
         vapi.stop()
     }
@@ -103,19 +162,20 @@ const CompanionComponent = ({ companionId, subject, topic, name, userName, userI
                         <div
                             className={
                             cn(
-                                'absolute transition-opacity duration-1000', callStatus === CallStatus.FINISHED || callStatus === CallStatus.INACTIVE ? 'opacity-1001' : 'opacity-0', callStatus === CallStatus.CONNECTING && 'opacity-100 animate-pulse'
+                                'absolute transition-opacity duration-1000', callStatus === CallStatus.FINISHED || callStatus === CallStatus.INACTIVE ? 'opacity-100' : 'opacity-0', callStatus === CallStatus.CONNECTING && 'opacity-100 animate-pulse'
                             )
                         }>
                             <Image src={`/icons/${subject}.svg`} alt={subject} width={150} height={150} className="max-sm:w-fit" />
                         </div>
 
                         <div className={cn('absolute transition-opacity duration-1000', callStatus === CallStatus.ACTIVE ? 'opacity-100': 'opacity-0')}>
-                            {/* <Lottie
+                            <Lottie
                                 lottieRef={lottieRef}
-                                animationData={soundwaves}
+                                src={soundwaves}
                                 autoplay={false}
+                                loop
                                 className="companion-lottie"
-                            /> */}
+                            />
                         </div>
                     </div>
                     <p className="font-bold text-2xl">{name}</p>
@@ -129,12 +189,16 @@ const CompanionComponent = ({ companionId, subject, topic, name, userName, userI
                         </p>
                     </div>
                     <button className="btn-mic" onClick={toggleMicrophone} disabled={callStatus !== CallStatus.ACTIVE}>
-                        <Image src={isMuted ? '/icons/mic-off.svg' : '/icons/mic-on.svg'} alt="mic" width={36} height={36} />
+                        <Image src={isMuted ? '/icons/mic-off.svg' : '/icons/mic-on.svg'} alt="" width={36} height={36} />
                         <p className="max-sm:hidden">
                             {isMuted ? 'Turn on microphone' : 'Turn off microphone'}
                         </p>
                     </button>
-                    <button className={cn('rounded-lg py-2 cursor-pointer transition-colors w-full text-white', callStatus ===CallStatus.ACTIVE ? 'bg-red-700' : 'bg-primary', callStatus === CallStatus.CONNECTING && 'animate-pulse')} onClick={callStatus === CallStatus.ACTIVE ? handleDisconnect : handleCall}>
+                    <button
+                        className={cn('rounded-lg py-2 cursor-pointer transition-colors w-full text-white disabled:opacity-70 disabled:cursor-not-allowed', callStatus === CallStatus.ACTIVE ? 'bg-red-700' : 'bg-primary', callStatus === CallStatus.CONNECTING && 'animate-pulse')}
+                        onClick={callStatus === CallStatus.ACTIVE ? handleDisconnect : handleCall}
+                        disabled={callStatus === CallStatus.CONNECTING}
+                    >
                         {callStatus === CallStatus.ACTIVE
                         ? "End Session"
                         : callStatus === CallStatus.CONNECTING
@@ -151,11 +215,7 @@ const CompanionComponent = ({ companionId, subject, topic, name, userName, userI
                         if(message.role === 'assistant') {
                             return (
                                 <p key={index} className="max-sm:text-sm">
-                                    {
-                                        name
-                                            .split(' ')[0]
-                                            .replace('/[.,]/g, ','')
-                                    }: {message.content}
+                                    {name.split(' ')[0].replace(/[.,]/g, '')}: {message.content}
                                 </p>
                             )
                         } else {

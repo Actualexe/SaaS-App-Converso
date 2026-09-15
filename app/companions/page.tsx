@@ -3,8 +3,6 @@ import CompanionCard from "@/components/CompanionCard";
 import {getSubjectColor} from "@/lib/utils";
 import SearchInput from "@/components/SearchInput";
 import SubjectFilter from "@/components/SubjectFilter";
-// import SearchInput from "@/components/SearchInput";
-// import SubjectFilter from "@/components/SubjectFilter";
 
 const CompanionsLibrary = async ({ searchParams }: SearchParams) => {
     const filters = await searchParams;
@@ -12,7 +10,7 @@ const CompanionsLibrary = async ({ searchParams }: SearchParams) => {
     const topic = filters.topic ? filters.topic : '';
 
     const companions = await getAllCompanions({ subject, topic });
-    console.log(companions);
+
     return (
         <main>
             <section className="flex justify-between gap-4 max-sm:flex-col">
@@ -22,15 +20,21 @@ const CompanionsLibrary = async ({ searchParams }: SearchParams) => {
                     <SubjectFilter />
                 </div>
             </section>
-            <section className="companions-grid">
-                {companions.map((companion) => (
-                    <CompanionCard
-                        key={companion.id}
-                        {...companion}
-                        color={getSubjectColor(companion.subject)}
-                    />
-                ))}
-            </section>
+            {companions.length === 0 ? (
+                <p className="pt-10 text-center text-lg">
+                    No companions match your search. Try a different subject or topic.
+                </p>
+            ) : (
+                <section className="companions-grid">
+                    {companions.map((companion) => (
+                        <CompanionCard
+                            key={companion.id}
+                            {...companion}
+                            color={getSubjectColor(companion.subject)}
+                        />
+                    ))}
+                </section>
+            )}
         </main>
     )
 }

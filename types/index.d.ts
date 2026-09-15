@@ -1,29 +1,22 @@
-// type User = {
-//   name: string;
-//   email: string;
-//   image?: string;
-//   accountId: string;
-// };
+type Subject =
+  | "maths"
+  | "language"
+  | "science"
+  | "history"
+  | "coding"
+  | "economics";
 
-enum Subject {
-  maths = "maths",
-  language = "language",
-  science = "science",
-  history = "history",
-  coding = "coding",
-  geography = "geography",
-  economics = "economics",
-  finance = "finance",
-  business = "business",
-}
-
-type Companion = Models.DocumentList<Models.Document> & {
-  $id: string;
+type Companion = {
+  id: string;
+  author: string;
   name: string;
-  subject: Subject;
+  subject: string;
   topic: string;
   duration: number;
-  bookmarked: boolean;
+  voice: string;
+  style: string;
+  created_at?: string;
+  bookmarked?: boolean;
 };
 
 interface CreateCompanion {

@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -19,14 +18,13 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { subjects } from '@/constants'
 import { Textarea } from './ui/textarea'
 import { createCompanion } from '@/lib/actions/companion.actions'
-import {redirect} from "next/navigation"
+import {useRouter} from "next/navigation"
 
 const formSchema = z.object({
   name: z.string().min(1, {message: 'Companion is required.'}),
@@ -38,6 +36,8 @@ const formSchema = z.object({
 })
 
 const CompanionForm = () => {
+    const router = useRouter();
+
      // 1. Define your form.
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -53,15 +53,14 @@ const CompanionForm = () => {
     
     // 2. Define a submit handler.
     const onSubmit = async (values: z.infer<typeof formSchema>) => {
-        // Do something with the form values.
-        // ✅ This will be type-safe and validated.
-        const companion = await createCompanion(values);
-
-        if(companion) {
-            redirect(`/companions/${companion.id}`);
-        } else {
-            console.log('Failed to create a companion');
-            redirect('/');
+        try {
+            const companion = await createCompanion(values);
+            router.push(`/companions/${companion.id}`);
+        } catch (error) {
+            console.error('Failed to create a companion', error);
+            form.setError('root', {
+                message: error instanceof Error ? error.message : 'Failed to create a companion.',
+            });
         }
     }
     return (
@@ -188,7 +187,14 @@ const CompanionForm = () => {
                     </FormItem>
                 )}
                 />
-                <Button type="submit" className="w-full cursor-pointer">Build Your Companion</Button>
+                {form.formState.errors.root && (
+                    <p className="text-sm text-destructive" role="alert">
+                        {form.formState.errors.root.message}
+                    </p>
+                )}
+                <Button type="submit" className="w-full cursor-pointer" disabled={form.formState.isSubmitting}>
+                    {form.formState.isSubmitting ? 'Building...' : 'Build Your Companion'}
+                </Button>
             </form>
         </Form>
     )
