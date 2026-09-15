@@ -1,6 +1,5 @@
 "use client"
 import React from 'react'
-import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { Button } from "@/components/ui/button"
@@ -25,42 +24,37 @@ import { subjects } from '@/constants'
 import { Textarea } from './ui/textarea'
 import { createCompanion } from '@/lib/actions/companion.actions'
 import {useRouter} from "next/navigation"
-
-const formSchema = z.object({
-  name: z.string().min(1, {message: 'Companion is required.'}),
-  subject: z.string().min(1, {message: 'Subject is required.'}),
-  topic: z.string().min(1, {message: 'Topic is required.'}),
-  voice: z.string().min(1, {message: 'Voice is required.'}),
-  style: z.string().min(1, {message: 'Style is required.'}),
-  duration: z.coerce.number().min(1, {message: 'Duration is required.'}),
-})
+import { companionFormSchema, type CompanionFormValues } from '@/lib/validations/companion'
 
 const CompanionForm = () => {
     const router = useRouter();
 
      // 1. Define your form.
-    const form = useForm<z.infer<typeof formSchema>>({
-        resolver: zodResolver(formSchema),
+    const form = useForm<CompanionFormValues>({
+        resolver: zodResolver(companionFormSchema),
         defaultValues: {
             name: '',
-            subject: '',
-            topic: '', 
-            voice: '',
-            style: '',
+            // Enums start unselected; the schema rejects the empty value on submit.
+            subject: '' as CompanionFormValues['subject'],
+            topic: '',
+            voice: '' as CompanionFormValues['voice'],
+            style: '' as CompanionFormValues['style'],
             duration: 15,
         },
     })
-    
+
     // 2. Define a submit handler.
-    const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    const onSubmit = async (values: CompanionFormValues) => {
         try {
-            const companion = await createCompanion(values);
-            router.push(`/companions/${companion.id}`);
+            const result = await createCompanion(values);
+            if (!result.ok) {
+                form.setError('root', { message: result.error });
+                return;
+            }
+            router.push(`/companions/${result.companion.id}`);
         } catch (error) {
             console.error('Failed to create a companion', error);
-            form.setError('root', {
-                message: error instanceof Error ? error.message : 'Failed to create a companion.',
-            });
+            form.setError('root', { message: 'Failed to create a companion. Please try again.' });
         }
     }
     return (

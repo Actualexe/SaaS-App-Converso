@@ -19,14 +19,9 @@ type Companion = {
   bookmarked?: boolean;
 };
 
-interface CreateCompanion {
-  name: string;
-  subject: string;
-  topic: string;
-  voice: string;
-  style: string;
-  duration: number;
-}
+type CreateCompanionResult =
+  | { ok: true; companion: Companion }
+  | { ok: false; error: string };
 
 interface GetAllCompanions {
   limit?: number;
@@ -73,4 +68,5 @@ interface CompanionComponentProps {
   userImage: string;
   voice: string;
   style: string;
+  duration: number;
 }

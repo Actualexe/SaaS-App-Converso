@@ -3,42 +3,98 @@
 import {auth} from "@clerk/nextjs/server";
 import {createSupabaseClient} from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { subjects } from "@/constants";
+import { companionFormSchema } from "@/lib/validations/companion";
 
-export const createCompanion = async (formData: CreateCompanion) => {
-    const { userId: author } = await auth();
-    if(!author) throw new Error('You must be signed in to create a companion');
+type Auth = Awaited<ReturnType<typeof auth>>;
+
+// Resolves the caller's companion cap from their Clerk plan/features and
+// compares it against the companions they already own.
+const hasCompanionCapacity = async (userId: string, has: Auth['has']) => {
+    if(has({ plan: 'pro' })) return true;
+
+    const limit = has({ feature: "10_active_companions" }) ? 10
+        : has({ feature: "3_active_companions" }) ? 3
+        : 0;
+    if(limit === 0) return false;
+
+    const supabase = createSupabaseClient();
+    const { count, error } = await supabase
+        .from('companions')
+        .select('id', { count: 'exact', head: true })
+        .eq('author', userId)
+
+    if(error) throw new Error(error.message);
+
+    return (count ?? 0) < limit;
+}
+
+// Errors thrown from a server action are redacted in production, so expected
+// failures are returned as values the form can show.
+export const createCompanion = async (formData: unknown): Promise<CreateCompanionResult> => {
+    const { userId: author, has } = await auth();
+    if(!author) return { ok: false, error: 'You must be signed in to create a companion.' };
+
+    const parsed = companionFormSchema.safeParse(formData);
+    if(!parsed.success) {
+        return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid companion details.' };
+    }
+
+    if(!(await hasCompanionCapacity(author, has))) {
+        return { ok: false, error: 'You have reached your companion limit. Upgrade your plan to create more.' };
+    }
 
     const supabase = createSupabaseClient();
 
     const { data, error } = await supabase
         .from('companions')
-        .insert({...formData, author })
-        .select();
+        .insert({ ...parsed.data, author })
+        .select()
+        .single();
 
-    if(error || !data?.[0]) throw new Error(error?.message || 'Failed to create a companion');
+    if(error || !data) {
+        console.error('Failed to create a companion', error);
+        return { ok: false, error: 'Failed to create a companion. Please try again.' };
+    }
 
     revalidatePath('/');
     revalidatePath('/companions');
     revalidatePath('/my-journey');
 
-    return data[0];
+    return { ok: true, companion: data as Companion };
 }
+
+const MAX_SEARCH_LENGTH = 100;
+
+// Search params may repeat (?topic=a&topic=b); only the first value is used.
+const firstParam = (value?: string | string[]) =>
+    (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+
+// `.or()` takes a raw PostgREST filter string, where `,` `(` `)` separate
+// clauses. Double-quoting the value keeps user input inside a single clause.
+const quoteFilterValue = (value: string) =>
+    `"${value.slice(0, MAX_SEARCH_LENGTH).replace(/[\\"]/g, '\\$&')}"`;
 
 export const getAllCompanions = async ({ limit = 10, page = 1, subject, topic }: GetAllCompanions) => {
     const supabase = createSupabaseClient();
 
     let query = supabase.from('companions').select();
 
-    if(subject && topic) {
-        query = query.ilike('subject', `%${subject}%`)
-            .or(`topic.ilike.%${topic}%,name.ilike.%${topic}%`)
-    } else if(subject) {
-        query = query.ilike('subject', `%${subject}%`)
-    } else if(topic) {
-        query = query.or(`topic.ilike.%${topic}%,name.ilike.%${topic}%`)
+    const subjectFilter = firstParam(subject);
+    if(subjectFilter) {
+        if(!(subjects as readonly string[]).includes(subjectFilter)) return [];
+        query = query.eq('subject', subjectFilter);
     }
 
-    query = query.range((page - 1) * limit, page * limit - 1);
+    const topicFilter = firstParam(topic);
+    if(topicFilter) {
+        const pattern = quoteFilterValue(`%${topicFilter}%`);
+        query = query.or(`topic.ilike.${pattern},name.ilike.${pattern}`);
+    }
+
+    query = query
+        .order('created_at', { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
 
     const { data: companions, error } = await query;
 
@@ -161,24 +217,5 @@ export const newCompanionPermissions = async () => {
     const { userId, has } = await auth();
     if(!userId) return false;
 
-    const supabase = createSupabaseClient();
-
-    let limit = 0;
-
-    if(has({ plan: 'pro' })) {
-        return true;
-    } else if(has({ feature: "10_active_companions" })) {
-        limit = 10;
-    } else if(has({ feature: "3_active_companions" })) {
-        limit = 3;
-    }
-
-    const { count, error } = await supabase
-        .from('companions')
-        .select('id', { count: 'exact', head: true })
-        .eq('author', userId)
-
-    if(error) throw new Error(error.message);
-
-    return (count ?? 0) < limit;
+    return hasCompanionCapacity(userId, has);
 }
